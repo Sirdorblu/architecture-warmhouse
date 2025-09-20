@@ -1,0 +1,38 @@
+Task_1
+
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+LAYOUT_TOP_DOWN()
+title WarmHouse:Subdomains + Context
+
+System_Boundary(dom,"Domain: Smart Home Control") {
+
+  System_Boundary(sd1,"Subdomain: Heating Control") {
+    System(heat_ctx,"Context: Heating Control","Включение/выключение отопления")
+  }
+
+  System_Boundary(sd2,"Subdomain: Telemetry") {
+    System(tlm_ctx,"Context: Telemetry","Получение текущей температуры")
+  }
+
+  System_Boundary(sd3,"Subdomain: Device Integration") {
+    System(dev_ctx,"Context: Device Integration","Синхронные опросы и команды")
+  }
+
+  System_Boundary(sd4,"Subdomain: IAM") {
+    System(iam_ctx,"Context: Identity and Access","Пользователи,роли,сессии")
+  }
+}
+
+System_Boundary(ctx,"Context") {
+  Person(customer,"Домовладелец","Управляет отоплением и смотрит температуру через веб")
+  System(smart_monolith,"Smart House Monolith","Go + PostgreSQL.Монолит.Синхронные запросы к устройствам")
+  System_Ext(devices,"Домовые устройства","Контроллер отопления и датчики температуры")
+
+  Rel(customer, smart_monolith,"Uses","HTTPS")
+  Rel(smart_monolith, devices,"Команды управления отоплением","Sync")
+  Rel(devices, smart_monolith,"Текущая температура","Sync")
+}
+@enduml
+
+
