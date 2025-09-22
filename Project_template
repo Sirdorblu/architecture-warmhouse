@@ -10,11 +10,9 @@ System_Boundary(dom,"Domain: Smart Home Control") {
   System_Boundary(sd1,"Subdomain: Heating Control") {
     System(heat_ctx,"Context: Heating Control","Включение/выключение отопления")
   }
-
   System_Boundary(sd2,"Subdomain: Telemetry") {
     System(tlm_ctx,"Context: Telemetry","Получение текущей температуры")
   }
-
   System_Boundary(sd3,"Subdomain: Device Integration") {
     System(dev_ctx,"Context: Device Integration","Синхронные опросы и команды")
   }
@@ -36,3 +34,184 @@ System_Boundary(ctx,"Context") {
 @enduml
 
 
+Task_2
+
+a)
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+LAYOUT_TOP_DOWN()
+title WarmHouse — To-Be Containers
+
+Person(user,"Домовладелец")
+System_Ext(dev,"Домовые устройства","Датчики")
+System_Boundary(saas,"WarmHouse SaaS") {
+  Container(web,"Web App","UI")
+  Container(api,"BFF","HTTP")
+  Container(iam,"Identity and Access","JWT")
+  ContainerDb(iam_db,"IAM DB","PostgreSQL")
+  Container(reg,"Device Registry","HTTP","реестр устройств")
+  ContainerDb(reg_db,"Registry DB","PostgreSQL")
+  Container(gw,"Device Gateway","MQTT")
+  ContainerQueue(bus,"Event Bus","Kafka","telemetry, commands, events")
+  Container(ing,"Telemetry Worker","Workers","обогащение телеметрии")
+  ContainerDb(tsdb,"Telemetry Store","TimescaleDB")
+  Container(tapi,"Telemetry API","HTTP","Чтение телеметрии/агрегатов")
+  Container(heat,"Heating Service","HTTP + events","Команды отопления")
+  Container(light,"Lighting Service","HTTP + events","Команды света")
+  Container(gate,"Gates Service","HTTP + events","Команды ворот")
+}
+Rel(user, web, "HTTPS")
+Rel(web, api, "HTTPS")
+Rel(web, iam, "OID (HTTPS)")
+Rel(api, iam, "JWT validate (HTTPS)")
+Rel(iam, iam_db, "R/W")
+Rel(dev, gw, "Publish telemetry / receive commands","MQTT")
+Rel(gw, bus, "Produce telemetry","events")
+Rel(heat, bus, "Produce device commands","events")
+Rel(light, bus, "Produce device commands","events")
+Rel(gate, bus, "Produce device commands","events")
+Rel(bus, gw, "Consume commands","events")
+Rel(bus, ing, "Consume telemetry","events")
+Rel(ing, tsdb, "Write metrics","SQL")
+Rel(api, tapi, "Query telemetry","HTTP")
+Rel(tapi, tsdb, "Read","SQL")
+Rel(api, heat, "Control","HTTP")
+Rel(api, light, "Control","HTTP")
+Rel(api, gate, "Control","HTTP")
+Rel(reg, reg_db, "R/W")
+Rel(api, reg, "Device identification","HTTP")
+Rel(gw, reg, "Device identification","HTTP")
+@enduml
+
+b)
+1.
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+LAYOUT_TOP_DOWN()
+title Device Gateway
+
+Container_Boundary(gw, "Device Gateway") {
+  Component(mqtt,"MQTT Broker","MQTT/TLS","Транспорт Pub/Sub")
+  Component(authz,"Device Authenticator","mTLS+Registry","ACL")
+  Component(sess,"Session Manager","State","Сессии устройств")
+  Component(telpub,"Telemetry Producer","MQTT→Events","Публикация телеметрии")
+  Component(cmdsub,"Command Consumer","Events→MQTT","Доставка команд на топики")
+  Component(regc,"Registry Client","HTTP","Метаданныяе/ключи устройств")
+  Component(metrics,"Metrics","Obs","Метрики")
+}
+Component_Ext(bus,"Event Bus","Kafka","telemetry,commands")
+
+Rel(mqtt,authz,"mTLS verify")
+Rel(authz,regc,"Запрос ключей", "HTTP")
+Rel(telpub,mqtt,"Подписка на телеметрию")
+Rel(telpub,bus,"Produce telemetry", "events")
+Rel(bus,cmdsub,"Consume commands", "events")
+Rel(cmdsub,mqtt,"Publish commands")
+Rel(sess,mqtt,"Трекинг сессий")
+Rel(metrics,mqtt,"Сбор метрик")
+@enduml
+
+2.
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+LAYOUT_TOP_DOWN()
+title Heating Service
+
+Container_Boundary(heat,"Heating Service") {
+  Component(api,"API Controller","HTTP","REST обработчики")
+  Component(orchestr,"Command Orchestrator","App","оркестрация")
+  Component(outbox,"Outbox Publisher","Events","Публикация команд")
+  Component(repo,"State Repository","Repository","Желаемое состояние,задания")
+}
+Component_Ext(bus,"Event Bus","Kafka","commands")
+Component_Ext(iam,"IAM (OIDC/JWT)", "HTTP","Валидация токена")
+ComponentDb_Ext(db,"Heating DB","PostgreSQL","Состояние/журналы")
+Rel(api, orchestr,"Создание команд")
+Rel(orchestr, repo, "")
+Rel(repo, db, "R/W","SQL")
+Rel(orchestr, outbox,"Write")
+Rel(outbox,bus, "Publish command","events")
+Rel(api, iam,"Validate JWT","OIDC")
+@enduml
+
+3.
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+LAYOUT_TOP_DOWN()
+title Telemetry Worker + Telemetry API
+
+Container_Boundary(ing,"Telemetry Worker") {
+  Component(consumer,"Event Consumer","Kafka client","Читает telemetry")
+  Component(enrich,"Enricher","Join","Добавляет метаданные из Registry")
+  Component(persist,"Persister","TS Write","Запись во временные ряды")
+}
+Container_Boundary(tapi, "Telemetry API") {
+  Component(qapi,"Query Controller","HTTP","Запросы агрегатов")
+  Component(tsread,"TSDB Adapter","Read","Чтение рядов и агрегатов")
+}
+Component_Ext(bus,"Event Bus","Kafka","telemetry")
+ComponentDb_Ext(tsdb,"Telemetry Store","TimescaleDB","Временные ряды")
+Component_Ext(reg,"Registry API","HTTP","Метаданные устройств")
+Rel(bus, consumer,"Consume telemetry","events")
+Rel(consumer,enrich,"Forward")
+Rel(enrich, reg,"Fetch meta","HTTP")
+Rel(enrich, persist,"Batches")
+Rel(persist, tsdb,"Write","SQL/Batch")
+Rel(qapi, tsread,"Query")
+Rel(tsread, tsdb,"Read", "SQL")
+@enduml
+
+c)
+1.команда отопления
+@startuml
+autonumber
+actor User as U
+participant "Web App" as WEB
+participant "BFF" as BFF
+participant "IAM" as IAM
+participant "Heating Service" as HEAT
+database "Heating DB" as HDB
+queue "Event Bus" as BUS
+participant "Device Gateway" as GW
+entity "Heating Device" as DEV
+
+U -> WEB:setTargetTemperature()
+WEB -> BFF: POST /heating/commands {JWT}
+BFF -> IAM: validate(JWT)
+IAM --> BFF: OK
+BFF -> HEAT:createCommand(deviceId,payload)
+HEAT -> HDB: save(Command{PENDING})
+HEAT -> BUS:publish(DeviceCommand)
+BUS -> GW: consume(DeviceCommand)
+GW -> DEV:MQTT publish cmd
+DEV --> GW:ACK/state
+GW -> BUS: publish(CmdAck/State)
+BUS -> HEAT: consume(CmdAck/State)
+HEAT -> HDB:update(Command{APPLIED})
+HEAT --> BFF:202 Accepted, commandId
+BFF --> WEB:commandId
+@enduml
+
+2.
+@startuml
+autonumber
+entity "Device" as DEV
+participant "Device Gateway" as GW
+queue "Event Bus" as BUS
+participant "Telemetry Worker" as ING
+database "Telemetry Store (TimescaleDB)" as TSDB
+participant "Telemetry API" as TAPI
+participant "BFF" as BFF
+participant "Web App" as WEB
+
+DEV -> GW:MQTT publish telemetry
+GW -> BUS:produce(telemetry)
+BUS -> ING: consume(telemetry)
+ING -> TSDB: write(points)
+WEB -> BFF:GET /telemetry?deviceId...
+BFF -> TAPI: query(...)
+TAPI -> TSDB:SELECT aggregates
+TSDB --> TAPI: rows
+TAPI --> BFF: JSON
+BFF --> WEB: charts/data
+@enduml
