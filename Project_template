@@ -215,3 +215,116 @@ TSDB --> TAPI: rows
 TAPI --> BFF: JSON
 BFF --> WEB: charts/data
 @enduml
+
+Task_3
+
+@startuml
+' ERD (crow's foot). См. plantuml.com/ie-diagram
+hide circle
+skinparam linetype ortho
+title WarmHouse DB
+
+entity "User" as user {
+  *id:UUID <<PK>>
+  email:text <<U>>
+  password_hash:text
+  full_name:text
+  created_at:timestamptz
+}
+
+entity "House" as house {
+  *id:UUID <<PK>>
+  owner_user_id:UUID <<FK User.id>>
+  address:text
+  timezone:text
+  name:text
+  created_at:timestamptz
+}
+
+entity "UserHouseAccess" as uha {
+  *user_id:UUID <<FK User.id>>
+  *house_id:UUID <<FK House.id>>
+  role: text ' owner|member|viewer
+}
+
+entity "Room" as room {
+  *id:UUID <<PK>>
+  house_id:UUID <<FK House.id>>
+  name: text
+}
+
+entity "DeviceType" as dtype {
+  *id:UUID <<PK>>
+  code: text <<U>> 'heating_controller|light_switch|gate|'
+  vendor:text
+  description: text
+}
+
+
+entity "Device" as dev {
+  *id: UUID <<PK>>
+  type_id:UUID <<FK DeviceType.id>>
+  house_id:UUID <<FK House.id>>
+  room_id:UUID <<FK Room.id>>  'nullable'
+  serial_number: text <<U>>
+  name:text
+  status: text 'online|offline|error'
+  last_seen:timestamptz
+  firmware_ver: text
+}
+
+entity "DeviceCredentials" as cred {
+  *device_id:UUID <<PK, FK Device.id>>
+  public_key_pem: text
+  issued_at:timestamptz
+  revoked:boolean
+}
+
+entity "Module" as module {
+  *id:UUID <<PK>>
+  house_id: UUID <<FK House.id>>
+  type:text 'heating|lighting|gates|surveillance'
+  name:text
+  enabled: boolean
+}
+
+entity "ModuleDevice" as mdev {
+  *module_id:UUID <<FK Module.id>>
+  *device_id: UUID <<FK Device.id>>
+}
+
+entity "Command" as cmd {
+  *id: UUID <<PK>>
+  device_id: UUID <<FK Device.id>>
+  issued_by_user_id: UUID <<FK User.id>>
+  created_at: timestamptz
+  type: text 'POWER_ON|POWER_OFF|SET_TARGET|OPEN|CLOSE'
+  payload: jsonb
+  status: text  'PENDING|SENT|APPLIED|FAILED'
+  correlation_id: text
+}
+
+entity "TelemetryData" as tdata {
+  *id:bigserial <<PK>>
+  *device_id:UUID <<FK Device.id>>
+  *ts:timestamptz
+  metric: text 'temperature|power|state'
+  value_num: double 'nullable'
+  value_json: jsonb  'nullable'
+}
+
+' связи
+user||--o{ house : owns
+user||--o{ uha
+house||--o{ uha
+house||--o{ room
+house||--o{ dev
+room|o--o{ dev
+dtype ||--o{ dev
+dev||--|| cred
+module||--o{ mdev
+dev||--o{ mdev
+dev||--o{ cmd
+user||--o{ cmd : issues
+dev||--o{ tdata
+@enduml
