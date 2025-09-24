@@ -1,0 +1,115 @@
+asyncapi: "2.6.0"
+info:
+  title: Smart Home Events
+  version: "1.0.0"
+  description: |
+    Асинхронные события экосистемы умного дома (температура, статусы датчиков).
+defaultContentType: application/json
+
+servers:
+  local-kafka:
+    url: localhost:9092
+    protocol: kafka
+    description: Пример брокера (для документации)
+
+channels:
+  sensors.temperature.measured:
+    description: Поступление нового измерения температуры
+    subscribe:
+      summary: Сервисы (например, smart_home) подписываются на новые измерения
+      operationId: onTemperatureMeasured
+      message:
+        $ref: "#/components/messages/TemperatureMeasured"
+  sensors.status.changed:
+    description: Изменение статуса датчика
+    subscribe:
+      summary: Подписка на изменения статуса датчиков
+      operationId: onSensorStatusChanged
+      message:
+        $ref: "#/components/messages/SensorStatusChanged"
+
+components:
+  messages:
+    TemperatureMeasured:
+      name: TemperatureMeasured
+      title: Новое измерение температуры
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/TemperaturePayload"
+      examples:
+        - name: living-room-sample
+          summary: Пример измерения в гостиной
+          payload:
+            value: 23.14
+            unit: "°C"
+            timestamp: "2025-09-23T10:00:00Z"
+            location: "Living Room"
+            status: "active"
+            sensor_id: "1"
+            sensor_type: "temperature"
+            description: "Temperature sensor in Living Room"
+    SensorStatusChanged:
+      name: SensorStatusChanged
+      title: Изменение статуса датчика
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/SensorStatusPayload"
+      examples:
+        - name: sensor-2-inactive
+          payload:
+            id: 2
+            status: inactive
+            changed_at: "2025-09-23T10:10:00Z"
+            reason: "Manual maintenance"
+
+  schemas:
+    TemperaturePayload:
+      type: object
+      properties:
+        value:
+          type: number
+          format: float
+        unit:
+          type: string
+          description: Единица измерения
+        timestamp:
+          type: string
+          format: date-time
+        location:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive, error]
+        sensor_id:
+          type: string
+        sensor_type:
+          type: string
+          enum: [temperature]
+        description:
+          type: string
+      required:
+        - value
+        - unit
+        - timestamp
+        - location
+        - status
+        - sensor_id
+        - sensor_type
+
+    SensorStatusPayload:
+      type: object
+      properties:
+        id:
+          type: integer
+        status:
+          type: string
+          enum: [active, inactive, error]
+        changed_at:
+          type: string
+          format: date-time
+        reason:
+          type: string
+      required:
+        - id
+        - status
+        - changed_at
