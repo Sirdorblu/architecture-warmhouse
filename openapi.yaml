@@ -1,0 +1,339 @@
+openapi: 3.0.3
+info:
+  title: Smart Home Sensor API
+  version: "1.0.0"
+  description: |
+    REST API для управления датчиками умного дома и получения текущих температур.
+servers:
+  - url: http://localhost:8080
+    description: Local
+
+tags:
+  - name: Health
+  - name: Sensors
+  - name: Temperature
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /api/v1/sensors:
+    get:
+      tags: [Sensors]
+      summary: Получить список датчиков
+      responses:
+        "200":
+          description: Список датчиков
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Sensor"
+              example:
+                - id: 2
+                  name: Living Room Temperature
+                  type: temperature
+                  location: Living Room
+                  value: 22.37
+                  unit: "°C"
+                  status: active
+                  last_updated: "2025-09-23T09:58:23Z"
+                  created_at: "2025-09-23T09:55:29Z"
+    post:
+      tags: [Sensors]
+      summary: Создать датчик
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SensorCreate"
+            example:
+              name: Living Room Temperature
+              type: temperature
+              location: Living Room
+              unit: "°C"
+      responses:
+        "201":
+          description: Датчик создан
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sensor"
+        "400":
+          description: Некорректный запрос
+
+  /api/v1/sensors/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    get:
+      tags: [Sensors]
+      summary: Получить датчик по ID
+      responses:
+        "200":
+          description: Датчик
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sensor"
+        "404":
+          description: Не найдено
+    put:
+      tags: [Sensors]
+      summary: Обновить датчик (частичные поля допускаются)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SensorUpdate"
+            example:
+              name: Updated Living Room Temperature
+              type: temperature
+              location: Living Room
+              unit: "°C"
+      responses:
+        "200":
+          description: Обновлённый датчик
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sensor"
+        "400":
+          description: Некорректный запрос
+        "404":
+          description: Не найдено
+    delete:
+      tags: [Sensors]
+      summary: Удалить датчик
+      responses:
+        "200":
+          description: Удалено
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Sensor deleted successfully
+        "404":
+          description: Не найдено
+
+  /api/v1/sensors/{id}/value:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    patch:
+      tags: [Sensors]
+      summary: Обновить значение и статус датчика
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSensorValueRequest"
+            example:
+              value: 22.5
+              status: active
+      responses:
+        "200":
+          description: Значение обновлено
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Sensor value updated successfully
+        "400":
+          description: Некорректный запрос
+        "404":
+          description: Не найдено
+
+  /api/v1/sensors/temperature/{location}:
+    parameters:
+      - name: location
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags: [Temperature]
+      summary: Текущая температура по локации (прокси к temperature-api)
+      responses:
+        "200":
+          description: Данные температуры
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemperatureResponse"
+              example:
+                location: Living Room
+                value: 23.14
+                unit: "°C"
+                status: active
+                timestamp: "2025-09-23T10:00:00Z"
+                sensor_id: "1"
+                sensor_type: "temperature"
+                description: "Temperature sensor in Living Room"
+        "400":
+          description: Некорректный запрос
+        "500":
+          description: Ошибка внешнего сервиса
+
+components:
+  schemas:
+    SensorType:
+      type: string
+      enum: [temperature]
+      example: temperature
+
+    Sensor:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Living Room Temperature
+        type:
+          $ref: "#/components/schemas/SensorType"
+        location:
+          type: string
+          example: Living Room
+        value:
+          type: number
+          format: float
+          example: 21.7
+        unit:
+          type: string
+          example: "°C"
+        status:
+          type: string
+          description: Текущий статус датчика
+          enum: [active, inactive, error]
+          example: active
+        last_updated:
+          type: string
+          format: date-time
+          example: "2025-09-23T09:58:23Z"
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-09-23T09:55:29Z"
+      required:
+        - id
+        - name
+        - type
+        - location
+        - unit
+        - status
+        - last_updated
+        - created_at
+
+    SensorCreate:
+      type: object
+      properties:
+        name:
+          type: string
+        type:
+          $ref: "#/components/schemas/SensorType"
+        location:
+          type: string
+        unit:
+          type: string
+          example: "°C"
+      required: [name, type, location]
+
+    SensorUpdate:
+      type: object
+      description: Все поля необязательны
+      properties:
+        name:
+          type: string
+        type:
+          $ref: "#/components/schemas/SensorType"
+        location:
+          type: string
+        value:
+          type: number
+          format: float
+          nullable: true
+        unit:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive, error]
+
+    UpdateSensorValueRequest:
+      type: object
+      properties:
+        value:
+          type: number
+          format: float
+        status:
+          type: string
+          enum: [active, inactive, error]
+      required: [value, status]
+      example:
+        value: 22.5
+        status: active
+
+    TemperatureResponse:
+      type: object
+      properties:
+        value:
+          type: number
+          format: float
+        unit:
+          type: string
+          example: "°C"
+        timestamp:
+          type: string
+          format: date-time
+        location:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive, error]
+        sensor_id:
+          type: string
+        sensor_type:
+          type: string
+          enum: [temperature]
+        description:
+          type: string
+      required:
+        - value
+        - unit
+        - timestamp
+        - location
+        - status
+        - sensor_id
+        - sensor_type
